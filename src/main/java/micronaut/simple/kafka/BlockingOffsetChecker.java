@@ -31,6 +31,7 @@ public class BlockingOffsetChecker {
         for (var endOffset : endOffsets.entrySet()) {
             retrieveLastEventId(endOffset.getKey(), endOffset.getValue());
         }
+        this.initConsumer.close();
     }
 
     public List<String> latestEventIds() {

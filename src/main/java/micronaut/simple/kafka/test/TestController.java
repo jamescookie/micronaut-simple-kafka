@@ -17,7 +17,7 @@ public class TestController {
     @Get("/send/{message}")
     @Produces(MediaType.TEXT_PLAIN) 
     public String send(String message) {
-        for (int i = 0; i < 100000; i++) {
+        for (int i = 0; i < 10; i++) {
             String key = UUID.randomUUID().toString();
             commandProducer.sendCommand(key, message);
         }

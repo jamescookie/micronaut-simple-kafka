@@ -1,37 +1,52 @@
 package micronaut.simple.kafka;
 
-import io.micronaut.configuration.kafka.annotation.KafkaListener;
-import io.micronaut.configuration.kafka.annotation.OffsetReset;
-import io.micronaut.configuration.kafka.annotation.OffsetStrategy;
-import io.micronaut.configuration.kafka.annotation.Topic;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
+import io.micronaut.configuration.kafka.streams.ConfiguredStreamBuilder;
+import io.micronaut.context.annotation.Factory;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.kstream.Consumed;
+import org.apache.kafka.streams.kstream.KStream;
 
 import javax.inject.Inject;
+import javax.inject.Named;
 import javax.inject.Singleton;
+import java.util.Properties;
 import java.util.UUID;
 
-@Singleton
+@Factory
 class CommandConsumer {
     @Inject
     CustomStateStore customStateStore;
 
-    @KafkaListener(
-            groupId = "test",
-            offsetReset = OffsetReset.EARLIEST,
-            offsetStrategy = OffsetStrategy.AUTO
-//            properties = [
-//                    @Property(name = ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, value = "org.apache.kafka.common.serialization.StringDeserializer"),
-//                    @Property(name = ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, value = "io.confluent.kafka.serializers.KafkaAvroDeserializer")
-//            ]
-    )
-    @Topic(patterns = "test-commands")
-    void receive(ConsumerRecord<String, String> consumerRecord) {
-        System.out.println("reading command = " + consumerRecord);
-        String key = UUID.randomUUID().toString();
-        customStateStore.put(
-                key,
-                Event.builder().message(consumerRecord.value()).id(UUID.randomUUID().toString()).build());
-        Event event = customStateStore.get(key);
-        System.out.println("read event from store = " + event);
+    @Singleton
+    @Named("test-commands")
+    KStream<String, Event> commandStream(ConfiguredStreamBuilder builder) {
+        Properties props = builder.getConfiguration();
+        props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
+        props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, EventSerde.class.getName());
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+
+        KStream<String, String> source = builder.stream("test-commands",
+                Consumed.with(getKeySerde(String.class), getValueSerde(String.class)));
+
+        KStream<String, Event> stream = source
+                .mapValues(v -> Event.builder().message(v).id(UUID.randomUUID().toString()).build());//this would be the processing
+
+        stream
+                .peek((k, v) -> customStateStore.put(v))
+                .to("test-events");
+
+        return stream;
     }
+
+    private <K> Serde<K> getKeySerde(Class<K> keyType) {
+        return Serdes.serdeFrom(keyType);
+    }
+
+    private <V> Serde<V> getValueSerde(Class<V> valueType) {
+        return Serdes.serdeFrom(valueType);
+    }
+
 }

@@ -22,18 +22,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 @Singleton
 public class CustomStateStore {
-    private final EventProducer eventProducer;
     private final KafkaConsumer<String, Event> eventConsumer;
 
     private ConcurrentHashMap<String, String> pendingEvents = new ConcurrentHashMap<>();
     private ConcurrentHashMap<String, Event> actualEvents = new ConcurrentHashMap<>();
     private AtomicBoolean closing = new AtomicBoolean(false);
+    private AtomicBoolean ready = new AtomicBoolean(false);
 
     @Inject
-    CustomStateStore(EventProducer eventProducer, BlockingOffsetChecker blockingOffsetChecker, @Value("${kafka.bootstrap.servers}") String bootstrapServers) {
-        this.eventProducer = eventProducer;
+    CustomStateStore(BlockingOffsetChecker blockingOffsetChecker, @Value("${kafka.bootstrap.servers}") String bootstrapServers) {
         this.eventConsumer = new KafkaConsumer<>(createConsumerConfig(bootstrapServers), new StringDeserializer(), new JsonSerde<>(Event.class));
         blockingOffsetChecker.latestEventIds().forEach(id-> pendingEvents.put(id, id));
+        checkReady();
         this.eventConsumer.subscribe(Collections.singletonList("test-events"));
         new Thread(() -> {
             while (!this.closing.get()) {
@@ -68,11 +68,11 @@ public class CustomStateStore {
         }
     }
 
-    public void put(String key, Event event) {
+    public void put(Event event) {
         String eventId = UUID.randomUUID().toString();
         event.setEventId(eventId);
         pendingEvents.put(eventId, eventId);
-        eventProducer.sendEvent("test-events", key, event);
+        System.out.println("pendingEvents = " + pendingEvents.size());
     }
 
     public Event get(String key) {
@@ -90,12 +90,19 @@ public class CustomStateStore {
     private void receive(ConsumerRecord<String, Event> consumerRecord) {
         String key = consumerRecord.key();
         Event value = consumerRecord.value();
-        System.out.println("populating state store with: " + value);
         if (value != null) {
             actualEvents.put(key, value);
             pendingEvents.remove(value.getEventId());
+            checkReady();
         } else {
             actualEvents.remove(key);
+        }
+    }
+
+    private void checkReady() {
+        this.ready.set(this.pendingEvents.size() == 0);
+        if (ready.get()) {
+            System.out.println("~~~~~~~ READY ~~~~~~~~");
         }
     }
 
