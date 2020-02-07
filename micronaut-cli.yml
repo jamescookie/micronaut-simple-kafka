@@ -1,0 +1,5 @@
+profile: service
+defaultPackage: micronaut.simple.kafka
+---
+testFramework: junit
+sourceLanguage: java

@@ -1,0 +1,9 @@
+---
+kafka:
+  bootstrap:
+    servers: broker:9092
+
+confluent:
+  schema:
+    registry:
+      url: http://schema-registry:8081

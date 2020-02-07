@@ -1,0 +1,11 @@
+---
+micronaut:
+  application:
+    name: micronaut-simple-kafka
+  server:
+    port: ${random.port}
+
+---
+kafka:
+  bootstrap:
+    servers: broker:9092
