@@ -4,7 +4,8 @@ micronaut:
     name: micronaut-simple-kafka
   server:
     port: ${random.port}
-
+  metrics:
+    enabled: true
 ---
 kafka:
   bootstrap:

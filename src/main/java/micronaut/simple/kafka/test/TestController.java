@@ -15,9 +15,10 @@ public class TestController {
     CommandProducer commandProducer;
 
     @Get("/send/{message}")
-    @Produces(MediaType.TEXT_PLAIN) 
+    @Produces(MediaType.TEXT_PLAIN)
     public String send(String message) {
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 1_000_000; i++) {
+            if (i % 10000 == 0) System.out.println("done: " + i);
             String key = UUID.randomUUID().toString();
             commandProducer.sendCommand(key, message);
         }

@@ -1,5 +1,6 @@
 package micronaut.simple.kafka;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micronaut.configuration.kafka.serde.JsonSerde;
 import io.micronaut.context.annotation.Value;
 import lombok.NonNull;
@@ -23,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Singleton
 public class CustomStateStore {
     private final KafkaConsumer<String, Event> eventConsumer;
+    private final MeterRegistry meterRegistry;
 
     private ConcurrentHashMap<String, String> pendingEvents = new ConcurrentHashMap<>();
     private ConcurrentHashMap<String, Event> actualEvents = new ConcurrentHashMap<>();
@@ -30,13 +32,14 @@ public class CustomStateStore {
     private AtomicBoolean ready = new AtomicBoolean(false);
 
     @Inject
-    CustomStateStore(BlockingOffsetChecker blockingOffsetChecker, @Value("${kafka.bootstrap.servers}") String bootstrapServers) {
+    CustomStateStore(BlockingOffsetChecker blockingOffsetChecker, @Value("${kafka.bootstrap.servers}") String bootstrapServers, MeterRegistry meterRegistry) {
         this.eventConsumer = new KafkaConsumer<>(createConsumerConfig(bootstrapServers), new StringDeserializer(), new JsonSerde<>(Event.class));
+        this.meterRegistry = meterRegistry;
         blockingOffsetChecker.latestEventIds().forEach(id-> pendingEvents.put(id, id));
         checkReady();
         this.eventConsumer.subscribe(Collections.singletonList("test-events"));
         new Thread(() -> {
-            while (!this.closing.get()) {
+            while (!closing.get()) {
                 var records = this.eventConsumer.poll(Duration.ofMillis(100));
                 for (ConsumerRecord<String, Event> record : records) {
                     receive(record);
@@ -72,7 +75,7 @@ public class CustomStateStore {
         String eventId = UUID.randomUUID().toString();
         event.setEventId(eventId);
         pendingEvents.put(eventId, eventId);
-        System.out.println("pendingEvents = " + pendingEvents.size());
+//        System.out.println("pendingEvents = " + pendingEvents.size());
     }
 
     public Event get(String key) {
@@ -94,20 +97,24 @@ public class CustomStateStore {
             actualEvents.put(key, value);
             pendingEvents.remove(value.getEventId());
             checkReady();
+            meterRegistry.counter("state.store.counter").increment();
         } else {
             actualEvents.remove(key);
         }
     }
 
     private void checkReady() {
-        this.ready.set(this.pendingEvents.size() == 0);
-        if (ready.get()) {
-            System.out.println("~~~~~~~ READY ~~~~~~~~");
+        if (!ready.get()) {
+            ready.set(pendingEvents.size() == 0);
         }
+    }
+
+    public boolean isReady() {
+        return ready.get();
     }
 
     @PreDestroy
     public void close() {
-        this.closing.set(true);
+        closing.set(true);
     }
 }
