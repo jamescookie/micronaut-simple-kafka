@@ -1,11 +1,11 @@
 package micronaut.simple.kafka;
 
 import io.micronaut.configuration.kafka.serde.JsonSerde;
-import io.micronaut.context.annotation.Value;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 
+import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -13,16 +13,15 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
-import static micronaut.simple.kafka.CustomStateStore.createConsumerConfig;
-
 @Singleton
 public class BlockingOffsetChecker {
 
     private final KafkaConsumer<String, Event> initConsumer;
     private List<String> eventIds = new ArrayList<>();
 
-    BlockingOffsetChecker(@Value("${kafka.bootstrap.servers}") String bootstrapServers) {
-        this.initConsumer = new KafkaConsumer<>(createConsumerConfig(bootstrapServers), new StringDeserializer(), new JsonSerde<>(Event.class));
+    @Inject
+    BlockingOffsetChecker(CustomConsumerFactory customConsumerFactory) {
+        this.initConsumer = customConsumerFactory.createConsumer(new StringDeserializer(), new JsonSerde<>(Event.class));
         this.initConsumer.subscribe(Collections.singletonList("test-events"));
 
         var assignments = this.getAssignment();

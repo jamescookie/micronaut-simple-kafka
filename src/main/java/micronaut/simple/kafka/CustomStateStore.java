@@ -3,8 +3,6 @@ package micronaut.simple.kafka;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micronaut.configuration.kafka.serde.JsonSerde;
 import io.micronaut.context.annotation.Value;
-import lombok.NonNull;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
@@ -12,11 +10,8 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import javax.annotation.PreDestroy;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.Collections;
-import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -32,8 +27,8 @@ public class CustomStateStore {
     private AtomicBoolean ready = new AtomicBoolean(false);
 
     @Inject
-    CustomStateStore(BlockingOffsetChecker blockingOffsetChecker, @Value("${kafka.bootstrap.servers}") String bootstrapServers, MeterRegistry meterRegistry) {
-        this.eventConsumer = new KafkaConsumer<>(createConsumerConfig(bootstrapServers), new StringDeserializer(), new JsonSerde<>(Event.class));
+    CustomStateStore(BlockingOffsetChecker blockingOffsetChecker, CustomConsumerFactory customConsumerFactory, MeterRegistry meterRegistry) {
+        this.eventConsumer = customConsumerFactory.createConsumer(new StringDeserializer(), new JsonSerde<>(Event.class));
         this.meterRegistry = meterRegistry;
         blockingOffsetChecker.latestEventIds().forEach(id-> pendingEvents.put(id, id));
         checkReady();
@@ -46,29 +41,6 @@ public class CustomStateStore {
                 }
             }
         }).start();
-    }
-
-    public static Properties createConsumerConfig(@NonNull final String bootstrapServers) {
-        var config = new Properties();
-        config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        config.put(ConsumerConfig.CLIENT_ID_CONFIG, getUniqueHostName());
-        config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-        config.put(ConsumerConfig.GROUP_ID_CONFIG, getUniqueConsumerGroupId()); // Hack to always start from scratch
-        config.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed");
-        return config;
-    }
-
-    private static String getUniqueConsumerGroupId() {
-        return "state-store-consumer-" + UUID.randomUUID();
-    }
-
-    private static String getUniqueHostName() {
-        try {
-            return InetAddress.getLocalHost().getHostName() + "-" + UUID.randomUUID();
-        } catch (UnknownHostException e) {
-            return "localhost-" + UUID.randomUUID();
-        }
     }
 
     public void put(Event event) {
