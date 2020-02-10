@@ -2,7 +2,6 @@ package micronaut.simple.kafka;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micronaut.configuration.kafka.serde.JsonSerde;
-import io.micronaut.context.annotation.Value;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
@@ -30,8 +29,7 @@ public class CustomStateStore {
     CustomStateStore(BlockingOffsetChecker blockingOffsetChecker, CustomConsumerFactory customConsumerFactory, MeterRegistry meterRegistry) {
         this.eventConsumer = customConsumerFactory.createConsumer(new StringDeserializer(), new JsonSerde<>(Event.class));
         this.meterRegistry = meterRegistry;
-        blockingOffsetChecker.latestEventIds().forEach(id-> pendingEvents.put(id, id));
-        checkReady();
+        addPendingEvents(blockingOffsetChecker);
         this.eventConsumer.subscribe(Collections.singletonList("test-events"));
         new Thread(() -> {
             while (!closing.get()) {
@@ -51,7 +49,7 @@ public class CustomStateStore {
     }
 
     public Event get(String key) {
-        while (!pendingEvents.isEmpty()) {
+        while (hasPendingEvents()) {
             try {
                 System.out.println("Sleeping");
                 Thread.sleep(10);
@@ -60,6 +58,15 @@ public class CustomStateStore {
             }
         }
         return actualEvents.get(key);
+    }
+
+    private void addPendingEvents(BlockingOffsetChecker blockingOffsetChecker) {
+        blockingOffsetChecker.latestEventIds().forEach(id-> pendingEvents.put(id, id));
+        checkReady();
+    }
+
+    private boolean hasPendingEvents() {
+        return !pendingEvents.isEmpty();
     }
 
     private void receive(ConsumerRecord<String, Event> consumerRecord) {
@@ -89,4 +96,5 @@ public class CustomStateStore {
     public void close() {
         closing.set(true);
     }
+
 }

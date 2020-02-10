@@ -16,33 +16,38 @@ import java.util.Set;
 @Singleton
 public class BlockingOffsetChecker {
 
-    private final KafkaConsumer<String, Event> initConsumer;
+    private final CustomConsumerFactory customConsumerFactory;
     private List<String> eventIds = new ArrayList<>();
 
     @Inject
     BlockingOffsetChecker(CustomConsumerFactory customConsumerFactory) {
-        this.initConsumer = customConsumerFactory.createConsumer(new StringDeserializer(), new JsonSerde<>(Event.class));
-        this.initConsumer.subscribe(Collections.singletonList("test-events"));
+        this.customConsumerFactory = customConsumerFactory;
+        readOffsets();
+    }
 
-        var assignments = this.getAssignment();
-        var endOffsets = this.initConsumer.endOffsets(assignments);
-        this.initConsumer.pause(assignments);
+    public void readOffsets() {
+        KafkaConsumer<String, Event> initConsumer = customConsumerFactory.createConsumer(new StringDeserializer(), new JsonSerde<>(Event.class));
+        initConsumer.subscribe(Collections.singletonList("test-events"));
+
+        var assignments = getAssignment(initConsumer);
+        var endOffsets = initConsumer.endOffsets(assignments);
+        initConsumer.pause(assignments);
         for (var endOffset : endOffsets.entrySet()) {
-            retrieveLastEventId(endOffset.getKey(), endOffset.getValue());
+            retrieveLastEventId(initConsumer, endOffset.getKey(), endOffset.getValue());
         }
-        this.initConsumer.close();
+        initConsumer.close();
     }
 
     public List<String> latestEventIds() {
-        System.out.println("blocking finished eventIds = " + eventIds);
+        System.out.println("blocking finished. EventIds = " + eventIds);
         return eventIds;
     }
 
-    private Set<TopicPartition> getAssignment() {
-        var assignments = this.initConsumer.assignment();
+    private Set<TopicPartition> getAssignment(KafkaConsumer<String, Event> initConsumer) {
+        var assignments = initConsumer.assignment();
         while (assignments.isEmpty()) {
-            this.initConsumer.poll(Duration.ofMillis(10));
-            assignments = this.initConsumer.assignment();
+            initConsumer.poll(Duration.ofMillis(10));
+            assignments = initConsumer.assignment();
         }
 
         System.out.println("Assignments: " + assignments);
@@ -50,14 +55,14 @@ public class BlockingOffsetChecker {
     }
 
 
-    private void retrieveLastEventId(TopicPartition partition, Long endOffset) {
+    private void retrieveLastEventId(KafkaConsumer<String, Event> initConsumer, TopicPartition partition, Long endOffset) {
         var currentOffset = endOffset;
         var found = false;
-        this.initConsumer.resume(Collections.singletonList(partition));
+        initConsumer.resume(Collections.singletonList(partition));
         while (currentOffset > 0 && !found) {
             currentOffset -= 1;
-            this.initConsumer.seek(partition, currentOffset);
-            var records = this.initConsumer.poll(Duration.ofMillis(100));
+            initConsumer.seek(partition, currentOffset);
+            var records = initConsumer.poll(Duration.ofMillis(100));
             if (records != null) {
                 for (var record : records) {
                     if (record != null) {
@@ -73,7 +78,7 @@ public class BlockingOffsetChecker {
                 }
             }
         }
-        this.initConsumer.pause(Collections.singletonList(partition));
+        initConsumer.pause(Collections.singletonList(partition));
     }
 
 

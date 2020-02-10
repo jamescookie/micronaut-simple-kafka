@@ -10,13 +10,12 @@ import org.reactivestreams.Publisher;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.Collections;
  
 @Singleton
 // Only create bean when configuration property
-// endpoints.health.url.enabled equals true,
+// endpoints.health.enabled equals true,
 // and HealthEndpoint bean to expose /health endpoint is available.
-@Requires(property = HealthEndpoint.PREFIX + ".url.enabled", value = "true")
+@Requires(property = HealthEndpoint.PREFIX + ".enabled", value = "true", defaultValue = "true")
 @Requires(beans = HealthEndpoint.class)
 public class OffsetHealthIndicator implements HealthIndicator {
 
